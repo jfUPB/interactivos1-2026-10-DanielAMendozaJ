@@ -229,7 +229,119 @@ Este flujo ocurre constantemente dentro del bucle `draw()`, lo que permite que l
 El sistema demuestra cómo un dispositivo físico puede controlar un entorno digital mediante comunicación serial. Se establece una relación directa entre acción física y respuesta visual, lo que constituye un Sistema Físico Interactivo básico pero funcional.
 
 
-
-
 ## Bitácora de reflexión
 
+### Actividad 06: Análisis detallado del Sistema Físico Interactivo (Actividad 04)
+
+En la Actividad 04 se desarrolló un sistema físico interactivo en el que un botón del micro:bit controla el color de un cuadrado en p5.js. El objetivo no era solo lograr que funcionara, sino comprender cómo fluye la información entre hardware y software y cómo se mantiene un estado en el tiempo.
+
+Este sistema sigue la estructura fundamental:
+Input → Procesamiento → Output
+
+**1. Arquitectura general del sistema**
+
+El sistema está compuesto por dos partes principales:
+
+- **Micro:bit (hardware + MicroPython)**
+- **p5.js (entorno gráfico en el navegador)**
+
+Ambos se comunican mediante **comunicación serial USB**, utilizando la misma velocidad de transmisión (115200 baudios).
+
+**2. Análisis del código del micro:bit**
+
+```python
+from microbit import *  # Importa todas las funciones necesarias para usar el micro:bit
+
+uart.init(baudrate=115200)  # Inicializa la comunicación serial a 115200 baudios (velocidad de transmisión de datos)
+
+while True:  # Bucle infinito que se ejecuta constantemente
+    if button_a.is_pressed():  # Si el botón A está presionado en este momento
+        uart.write('A')  # Envía la letra "A" por el puerto serial
+    else:  # Si el botón NO está presionado
+        uart.write('N')  # Envía la letra "N" por el puerto serial
+    sleep(100)  # Espera 100 milisegundos para evitar enviar datos demasiado rápido
+```
+Micro:bit nos permite aquí conectarnos con el hardware que tenemos y mediante un proceso infinito (While True) estar al pendiente de nuestras acciones como al presionar los botones del Micro:bit identificarlos y escribir un dato según el botón presionado. esto nos servirá despues para cambiar el color del cuadrado
+
+**3. Análisis del código en p5.js**
+
+```python
+let port; // Variable global que almacenará el objeto de comunicación serial
+let connectBtn; // Variable global que almacenará el botón de conexión
+let connectionInitialized = false; // Bandera para saber si ya limpiamos el buffer al conectar
+
+function setup() {
+  createCanvas(400, 400); // Crea un canvas de 400x400 píxeles
+  background(220); // Color de fondo gris claro
+
+  port = createSerial(); // Crea el objeto que maneja la comunicación serial
+  connectBtn = createButton("Connect to micro:bit"); // Crea un botón en pantalla
+  connectBtn.position(80, 300); // Posiciona el botón en el canvas
+  connectBtn.mousePressed(connectBtnClick); // Cuando se hace click ejecuta connectBtnClick()
+}
+function draw() {
+  background(220); // Limpia la pantalla en cada frame
+
+  if (port.opened() && !connectionInitialized) { // Si el puerto está abierto y aún no hemos inicializado la conexión
+
+    port.clear(); // Limpia el buffer serial para eliminar datos viejos
+    connectionInitialized = true; // Marcamos que ya se limpió
+  }
+
+  if (port.availableBytes() > 0) { // Si hay datos disponibles en el puerto serial
+    
+    let dataRx = port.read(1); // Lee 1 byte (1 carácter) del puerto serial
+    
+    if (dataRx == "A") { 
+      fill("red"); // Si recibe "A", el cuadrado será rojo
+    } else if (dataRx == "N") { 
+      fill("green"); // Si recibe "N", el cuadrado será verde
+    }
+  }
+
+  rectMode(CENTER); // Hace que el rectángulo se dibuje desde el centro
+  
+  rect(width / 2, height / 2, 50, 50); // Dibuja el cuadrado en el centro del canvas
+  
+  if (!port.opened()) { 
+    connectBtn.html("Connect to micro:bit"); // Si el puerto está cerrado, el botón dice "Connect"
+  } else { 
+    connectBtn.html("Disconnect"); // Si el puerto está abierto, el botón dice "Disconnect"
+  }
+}
+
+function connectBtnClick() {
+  if (!port.opened()) { // Si el puerto está cerrado
+    port.open("MicroPython", 115200); // Abre la conexión serial usando MicroPython a 115200 baudios
+    connectionInitialized = false; // Reinicia la bandera para que el buffer se limpie nuevamente
+  } else { // Si el puerto está abierto
+    port.close(); // Cierra la conexión serial    
+  }
+}
+```
+**4. El error inicial y su análisis**
+
+Cuando se usó was_pressed() el sistema fallaba.
+
+Porque:
+was_pressed() envía 'A' solo una vez.
+p5.js recibe el dato en un solo frame.
+En el siguiente frame no hay datos.
+El cuadrado vuelve a verde inmediatamente.
+El error no era de conexión, sino de modelo mental del sistema.
+p5.js funciona con actualización constante (frames).
+Por lo tanto, necesita un flujo continuo de estado.
+
+La solución? cambiar a is_pressed() y enviar información constantemente.
+
+**5. Reflexión final**
+
+Este ejercicio permitió comprender que un sistema físico interactivo no solo depende del hardware y el software, sino de cómo se gestionan:
+
+El tiempo.
+Los estados.
+La comunicación.
+La sincronización entre dispositivos.
+
+La clave no fue solo cambiar una función, sino entender la diferencia entre eventos y estados continuos.
+Un sistema físico interactivo exitoso requiere pensar en flujo de información constante, no en acciones aisladas.
