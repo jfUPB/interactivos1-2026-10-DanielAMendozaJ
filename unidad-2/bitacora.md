@@ -86,9 +86,104 @@ La legibilidad
 La escalabilidad
 La mantenibilidad del código
 
+### Actividad 02 – Semáforo con Máquina de Estados
+
+Se implementa un semáforo utilizando una máquina de estados en MicroPython.
+
+**La secuencia normal es:**
+Rojo → 2 segundos
+Verde → 1 segundo
+Amarillo → 0.5 segundos
+Repite el ciclo
+
+**La modificación solicitada es:**
+Cuando el semáforo esté en verde y se presione el botón A, debe cambiar inmediatamente a amarillo sin esperar el Timeout.
+El evento que se debe publicar es:
+```python
+post_event("A")
+```
+esto significa que ahora el estado Verde tiene dos posibles transiciones
+
+**Identificación de la Máquina de Estados**
+Estados
+WaitInRed
+WaitInGreen
+WaitInYellow
+
+**Cada estado representa un color activo del semáforo.**
+Eventos
+"ENTRY"
+"EXIT"
+"Timeout"
+"A" (nuevo evento generado por el botón)
+el evento "A" solo tiene efecto en el estado verde
+
+**Transiciones clave**
+Red → Green por Timeout
+Green → Yellow por Timeout
+Green → Yellow por "A" (modificación)
+Yellow → Red por Timeout
+
+**Máquina de Estados en PlantUML**
+Este es el modelo construido en PlantUML:
+```plantuml
+@startuml
+title Semaforo - UML State Machine
+
+[*] --> WaitInRed : Semaforo() (constructor)
+
+WaitInRed : entry /\n  clear()\n  display.set_pixel(x,y,9)\n  myTimer.start(timeInRed)
+
+WaitInRed --> WaitInGreen : Timeout
+
+WaitInGreen : entry /\n  clear()\n  display.set_pixel(x,y+2,9)\n  myTimer.start(timeInGreen)
+
+WaitInGreen --> WaitInYellow : Timeout
+WaitInGreen --> WaitInYellow : A
+
+WaitInYellow : entry /\n  clear()\n  display.set_pixel(x,y+1,9)\n  myTimer.start(timeInYellow)
+
+WaitInYellow --> WaitInRed : Timeout
+
+@enduml
+```
+
+<img width="360" height="575" alt="image" src="https://github.com/user-attachments/assets/6b422f11-6a3d-4f31-9823-247cefd977eb" />
+
+
+**Análisis del comportamiento modificado**
+El estado WaitInGreen ahora tiene dos transiciones salientes:
+```plantuml
+WaitInGreen --> WaitInYellow : Timeout
+WaitInGreen --> WaitInYellow : A
+```
+Esto significa que:
+Si se cumple el tiempo → cambia a amarillo.
+Si se presiona botón A → cambia inmediatamente a amarillo.
+esto modela una interrupción manual del ciclo automático
+
+Para que esto funcione correctamente en el programa real, dentro del while True debería existir algo como:
+```python
+if button_a.was_pressed():
+    semaforo1.post_event("A")
+```
+si no se postea el evento, la transición nunca ocurrirá
+
+**Reflexión**
+Esta modificación demuestra que:
+Una máquina de estados permite agregar comportamiento nuevo sin romper la estructura.
+El sistema es reactivo a eventos externos.
+El diseño basado en eventos es más flexible que una lógica secuencial con sleep().
+Además, el modelo ahora representa un sistema que puede ser:
+Automático (por tiempo)
+Reactivo (por entrada del usuario)
+
+
+
 
 ## Bitácora de aplicación 
 
 
 
 ## Bitácora de reflexión
+
