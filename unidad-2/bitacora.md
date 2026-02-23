@@ -178,7 +178,141 @@ Además, el modelo ahora representa un sistema que puede ser:
 Automático (por tiempo)
 Reactivo (por entrada del usuario)
 
+### Actividad 03 – Máquina de Estados con Botones
 
+El programa muestra una secuencia cíclica de imágenes en el micro:bit:
+Heart → 2.5 s
+Pacman → 1 s
+Ghost → 2 s
+Repite el ciclo
+Además, si se presiona el botón A, el sistema salta inmediatamente a otro estado dependiendo de cuál esté activo.
+vemos que el sistema debe atender tiempo y botón al mismo tiempo
+
+**¿Cómo es posible estructurar la aplicación para atender eventos concurrentes?**
+
+La clave está en tres elementos:
+
+**Arquitectura basada en eventos**
+El sistema no usa sleep() para controlar la duración de cada imagen.
+
+En lugar de eso:
+El Timer genera un evento "Timeout".
+El botón genera un evento "A".
+Ambos se agregan a event_queue.
+La máquina de estados procesa los eventos uno por uno.
+```python
+if button_a.was_pressed():
+    game.post_event("A")
+```
+esto convierte una acción física en un evento del sistema
+
+**Separación clara entre:**
+Generación de eventos (Timer, botón)
+Procesamiento de eventos (máquina de estados)
+Comportamiento del estado actual
+
+Esto permite que:
+El tiempo siga corriendo
+El botón pueda interrumpir en cualquier momento
+El sistema nunca se bloquee
+
+**No hay bloqueos**
+El while True solo hace:
+```python
+game.update()
+utime.sleep_ms(20)
+```
+El sleep_ms(20) es mínimo y no detiene la lógica interna del sistema.
+esto es concurrencia cooperativa, no paralelismo real
+
+**Estados del sistema**
+waitInHeart
+waitInPacman
+waitInGhost
+
+Cada estado define:
+Qué imagen mostrar
+Cuánto tiempo durar
+Qué hacer ante Timeout
+Qué hacer ante "A"
+
+**Eventos del sistema**
+"ENTRY"
+"EXIT"
+"Timeout"
+"A"
+
+**Transiciones importantes**
+*Flujo automático (por tiempo)*
+Heart → Pacman → Ghost → Heart
+*Flujo por botón A*
+Heart --A--> Ghost
+Pacman --A--> Heart
+Ghost --A--> Pacman
+
+el botón crea un ciclo alterno diferente al automático
+
+**¿Cómo probar que el programa está correcto?**
+
+Para validar el comportamiento debemos verificar:
+
+**Secuencia automática correcta**
+Sin presionar botón:
+Heart dura 2.5 s
+Pacman dura 1 s
+Ghost dura 2 s
+El ciclo se repite
+
+**Interrupción inmediata**
+Presionar botón A en cada estado:
+En Heart → debe ir a Ghost
+En Pacman → debe ir a Heart
+En Ghost → debe ir a Pacman
+La transición debe ser inmediata, no esperar Timeout.
+
+**Robustez del sistema**
+Presionar botón repetidamente y rápido:
+El sistema no debe congelarse.
+No debe saltarse estados inesperadamente.
+No debe quedarse sin mostrar imagen.
+esto prueba que la cola de eventos funciona correctamente
+
+
+**Análisis conceptual importante**
+
+Lo interesante aquí es que existen dos flujos superpuestos:
+Flujo temporal (automático)
+Flujo reactivo (botón)
+La máquina de estados permite modelar ambos sin mezclar condicionales caóticos.
+
+Si esto se hiciera con if anidados sin máquina de estados, el código sería más difícil de escalar.
+
+**¿Hay algo que aún no comprendo completamente?**
+
+Una parte que genera duda es:
+
+¿Por qué no se usa un if-elif gigante en lugar de estados?
+
+La respuesta es:
+Porque cada estado encapsula su propio comportamiento y sus propias transiciones.
+Eso hace que:
+El código sea modular.
+Sea más fácil agregar nuevos estados.
+Se pueda razonar sobre el sistema como un modelo formal.
+
+esta es la diferencia entre programar “que funcione” y programar con arquitectura
+
+**Refelxión**
+
+Esta implementación demuestra cómo una máquina de estados permite:
+Manejar tiempo y entradas de usuario simultáneamente.
+Modelar comportamientos complejos de forma clara.
+Mantener el sistema reactivo sin bloquear ejecución.
+Es un diseño orientado a eventos, típico de sistemas embebidos reales.
+
+Un sistema embebido es un sistema computacional diseñado para cumplir una función específica dentro de un dispositivo más grande. 
+En pocas palabras:
+Es una pequeña computadora especializada que vive dentro de otro dispositivo y hace que ese dispositivo funcione.
 
 
 ## Bitácora de aplicación 
@@ -186,4 +320,5 @@ Reactivo (por entrada del usuario)
 
 
 ## Bitácora de reflexión
+
 
