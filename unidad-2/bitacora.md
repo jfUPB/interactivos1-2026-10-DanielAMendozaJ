@@ -545,10 +545,272 @@ Al llegar a 0 → mostrar calavera y activar speaker.
 Presionar A → reinicia a 20 pixeles.
 
 
-
-
-
 ## Bitácora de reflexión
 
+**Temporizador interactivo controlado desde micro:bit y p5.js**
+
+***Objetivo del reto***
+Modificar el temporizador interactivo para que pueda controlarse tanto desde los botones físicos del micro:bit como desde p5.js, usando:
+A → UP
+B → DOWN
+S → ARMED
+Sin cambiar la arquitectura de máquina de estados ya implementada.
+
+**¿Cómo resolví el reto?**
+
+*La clave fue entender algo fundamental:*
+No debía cambiar la máquina de estados.
+Solo debía agregar una nueva fuente de eventos.
+
+*Mi arquitectura ya funcionaba así:*
+La máquina de estados recibe eventos.
+Los eventos se agregan a una cola (event_queue).
+Cada estado decide qué hacer con el evento.
+Entonces la solución no era modificar estados, sino hacer que p5.js enviara los mismos eventos que los botones físicos.
+
+**Estrategia usada**
+
+*Inicialicé la comunicación serial con:*
+```python
+uart.init(115200)
+```
+
+*En el while True, agregué la lectura del puerto serial:*
+```python
+if uart.any():
+    data = uart.read(1)
+    if data:
+        letra = data.decode()
+        if letra in ["A", "B", "S"]:
+            task.post_event(letra)
+```
+
+*Dejé intacta la lectura de botones físicos:*
+```python
+if button_a.was_pressed():
+    task.post_event("A")
+if button_b.was_pressed():
+    task.post_event("B")
+if accelerometer.was_gesture("shake"):
+    task.post_event("S")
+```
+
+**De esta forma:**
+Si presiono botón físico → se genera evento.
+Si p5.js envía letra → se genera el mismo evento.
+La máqina de estados no sabe quién lo envió.
+Todo funciona con la misma arquitectura.
+
+**¿Por qué esto respeta la arquitectura?**
+*Porque:*
+No cambié ningún estado.
+No modifiqué la clase Task.
+No alteré la lógica del Timer.
+Solo agregué otra fuente de eventos.
+
+La máquina de estados sigue funcionando exactamente igual.
+Solo amplié la entrada del sistema.
+Eso demuestra que la arquitectura estaba bien diseñada.
+
+Código final micro:bit
+```python
+from microbit import *
+import utime
+uart.init(115200)
+
+# ===== IMÁGENES =====
+def make_fill_images(on='9', off='0'):
+    imgs = []
+    for n in range(26):
+        rows = []
+        k = 0
+        for y in range(5):
+            row = []
+            for x in range(5):
+                row.append(on if k < n else off)
+                k += 1
+            rows.append(''.join(row))
+        imgs.append(Image(':'.join(rows)))
+    return imgs
+
+FILL = make_fill_images()
+
+# ===== TIMER =====
+class Timer:
+    def __init__(self, owner, event_to_post, duration):
+        self.owner = owner
+        self.event = event_to_post
+        self.duration = duration
+        self.start_time = 0
+        self.active = False
+
+    def start(self, new_duration=None):
+        if new_duration is not None:
+            self.duration = new_duration
+        self.start_time = utime.ticks_ms()
+        self.active = True
+
+    def stop(self):
+        self.active = False
+
+    def update(self):
+        if self.active:
+            if utime.ticks_diff(utime.ticks_ms(), self.start_time) >= self.duration:
+                self.active = False
+                self.owner.post_event(self.event)
+
+# ===== TASK =====
+class Task:
+    def __init__(self):
+        self.event_queue = []
+        self.timers = []
+        self.count = 20
+        self.myTimer = self.createTimer("Timeout", 1000)
+
+        self.estado_actual = None
+        self.transicion_a(self.estado_waitConfig)
+
+    def createTimer(self,event,duration):
+        t = Timer(self, event, duration)
+        self.timers.append(t)
+        return t
+
+    def post_event(self, ev):
+        self.event_queue.append(ev)
+
+    def update(self):
+        for t in self.timers:
+            t.update()
+
+        while len(self.event_queue) > 0:
+            ev = self.event_queue.pop(0)
+            if self.estado_actual:
+                self.estado_actual(ev)
+
+    def transicion_a(self, nuevo_estado):
+        if self.estado_actual:
+            self.estado_actual("EXIT")
+        self.estado_actual = nuevo_estado
+        self.estado_actual("ENTRY")
+
+    # ===== ESTADOS =====
+
+    def estado_waitConfig(self, ev):
+        if ev == "ENTRY":
+            self.count = 20
+            display.show(FILL[self.count])
+
+        if ev == "A" and self.count < 25:
+            self.count += 1
+            display.show(FILL[self.count])
+
+        if ev == "B" and self.count > 15:
+            self.count -= 1
+            display.show(FILL[self.count])
+
+        if ev == "S":
+            self.transicion_a(self.estado_waitRunning)
+
+    def estado_waitRunning(self, ev):
+        if ev == "ENTRY":
+            self.myTimer.start(1000)
+            
+        if ev == "B":
+            self.myTimer.stop()
+            self.transicion_a(self.estado_waitExplosion)
+            
+        if ev == "A":
+            self.myTimer.stop()
+            self.transicion_a(self.estado_waitConfig)
+
+        if ev == "Timeout":
+            self.count -= 1
+            display.show(FILL[self.count])
+
+            if self.count == 0:
+                self.transicion_a(self.estado_waitExplosion)
+            else:
+                self.myTimer.start(1000)
+
+    def estado_waitExplosion(self, ev):
+        if ev == "ENTRY":
+            display.show(Image.SKULL)
+            pin0.write_digital(1)  # speaker ON
+
+        if ev == "A":
+            pin0.write_digital(0)  # speaker OFF
+            self.transicion_a(self.estado_waitConfig)
 
 
+# ===== LOOP PRINCIPAL =====
+task = Task()
+
+while True:
+
+    if uart.any():
+        data = uart.read(1)
+        if data:
+           letra = data.decode()
+           if letra in ["A", "B", "S"]:
+               task.post_event(letra)
+    
+    if button_a.was_pressed():
+        task.post_event("A")
+    if button_b.was_pressed():
+        task.post_event("B")
+    if accelerometer.was_gesture("shake"):
+        task.post_event("S")
+
+    task.update()
+    utime.sleep_ms(20)
+```
+**Código final p5.js**
+```javascript
+let port;
+let connectBtn;
+
+function setup() {
+  createCanvas(400,400);
+
+  port = createSerial();
+
+  connectBtn = createButton("Connect");
+  connectBtn.mousePressed(connectBtnClick);
+}
+
+function draw() {
+  if (port.availableBytes() > 0) {
+    let dataRx = port.read(1);
+    console.log(dataRx);
+  }
+}
+
+function keyPressed() {
+  
+  if (!port.opened()) return;
+
+  if (key === 'A') port.write(key);
+  if (key === 'B') port.write(key);
+  if (key === 'S') port.write(key);
+  
+}
+
+function connectBtnClick() {
+  if (!port.opened()) {
+    port.open("MicroPython", 115200);
+  } else {
+    port.close();
+  }
+}
+```
+
+**Reflexión metacognitiva**
+
+*Este reto me permitió entender que:*
+Una buena arquitectura permite extender funcionalidad sin romper lo anterior.
+La máquina de estados desacopla la lógica de la entrada.
+Agregar nuevas entradas es simple cuando el diseño está bien hecho.
+El patrón de eventos hace que el sistema sea escalable.
+También comprendí que el problema no era de estados, sino de flujo de eventos.
+
+Lo que me ayudó a conectar otra interfaz sin molestar la maquina de estados
