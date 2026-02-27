@@ -612,7 +612,7 @@ La máquina de estados sigue funcionando exactamente igual.
 Solo amplié la entrada del sistema.
 Eso demuestra que la arquitectura estaba bien diseñada.
 
-Código final micro:bit
+Código final micro:bit (Lo vuelvo a incluir porque añadí un boton como de que si machuca B entonces cuando este "arreglandolo" si se equivoca y en lugar de pone A pone B el dispositivo estalla
 ```python
 from microbit import *
 import utime
@@ -814,3 +814,4 @@ El patrón de eventos hace que el sistema sea escalable.
 También comprendí que el problema no era de estados, sino de flujo de eventos.
 
 Lo que me ayudó a conectar otra interfaz sin molestar la maquina de estados
+
