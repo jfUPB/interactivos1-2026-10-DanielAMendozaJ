@@ -614,192 +614,196 @@ Eso demuestra que la arquitectura estaba bien diseñada.
 
 Código final micro:bit (Lo vuelvo a incluir porque añadí un boton como de que si machuca B entonces cuando este "arreglandolo" si se equivoca y en lugar de pone A pone B el dispositivo estalla
 ```python
-from microbit import *
-import utime
-uart.init(115200)
+from microbit import *              # Importa todas las funciones del micro:bit (display, botones, pines, etc.)
+import utime                        # Importa funciones de tiempo (ticks_ms, sleep, etc.)
+uart.init(115200)                   # Inicializa comunicación serial a 115200 baudios
 
 # ===== IMÁGENES =====
-def make_fill_images(on='9', off='0'):
-    imgs = []
-    for n in range(26):
-        rows = []
-        k = 0
-        for y in range(5):
-            row = []
-            for x in range(5):
-                row.append(on if k < n else off)
-                k += 1
-            rows.append(''.join(row))
-        imgs.append(Image(':'.join(rows)))
-    return imgs
+def make_fill_images(on='9', off='0'):   # Función que crea imágenes progresivas tipo barra de progreso
+    imgs = []                            # Lista donde se guardarán las imágenes generadas
+    for n in range(26):                  # Crea 26 imágenes (de 0 LEDs encendidos a 25)
+        rows = []                        # Lista temporal para guardar las filas de la imagen
+        k = 0                            # Contador de LEDs encendidos
+        for y in range(5):               # Recorre 5 filas
+            row = []                     # Lista temporal para cada fila
+            for x in range(5):           # Recorre 5 columnas
+                row.append(on if k < n else off)  # Enciende LED si k < n, si no lo deja apagado
+                k += 1                   # Incrementa el contador de LEDs
+            rows.append(''.join(row))    # Une la fila en formato string
+        imgs.append(Image(':'.join(rows))) # Convierte las filas en una imagen micro:bit
+    return imgs                          # Devuelve la lista completa de imágenes
 
-FILL = make_fill_images()
+FILL = make_fill_images()                # Genera todas las imágenes y las guarda en FILL
 
 # ===== TIMER =====
-class Timer:
-    def __init__(self, owner, event_to_post, duration):
-        self.owner = owner
-        self.event = event_to_post
-        self.duration = duration
-        self.start_time = 0
-        self.active = False
+class Timer:                             # Clase que implementa un temporizador no bloqueante
+    def __init__(self, owner, event_to_post, duration):  # Constructor
+        self.owner = owner               # Objeto que recibirá el evento cuando termine el tiempo
+        self.event = event_to_post       # Nombre del evento a enviar
+        self.duration = duration         # Duración del temporizador en milisegundos
+        self.start_time = 0              # Guarda el tiempo inicial
+        self.active = False              # Indica si el temporizador está activo
 
-    def start(self, new_duration=None):
+    def start(self, new_duration=None):  # Inicia el temporizador
         if new_duration is not None:
-            self.duration = new_duration
-        self.start_time = utime.ticks_ms()
-        self.active = True
+            self.duration = new_duration # Permite cambiar la duración si se pasa un valor nuevo
+        self.start_time = utime.ticks_ms() # Guarda el tiempo actual
+        self.active = True               # Activa el temporizador
 
-    def stop(self):
-        self.active = False
+    def stop(self):                      # Detiene el temporizador
+        self.active = False              # Lo desactiva
 
-    def update(self):
+    def update(self):                    # Se llama constantemente para verificar si terminó
         if self.active:
             if utime.ticks_diff(utime.ticks_ms(), self.start_time) >= self.duration:
-                self.active = False
-                self.owner.post_event(self.event)
+                self.active = False      # Desactiva el temporizador
+                self.owner.post_event(self.event)  # Envía evento cuando termina el tiempo
 
 # ===== TASK =====
-class Task:
+class Task:                              # Clase principal que contiene la máquina de estados
     def __init__(self):
-        self.event_queue = []
-        self.timers = []
-        self.count = 20
-        self.myTimer = self.createTimer("Timeout", 1000)
+        self.event_queue = []            # Cola donde se guardan los eventos
+        self.timers = []                 # Lista de temporizadores
+        self.count = 20                  # Valor inicial del contador
+        self.myTimer = self.createTimer("Timeout", 1000)  # Crea temporizador de 1 segundo
 
-        self.estado_actual = None
-        self.transicion_a(self.estado_waitConfig)
+        self.estado_actual = None        # Variable que guarda el estado actual
+        self.transicion_a(self.estado_waitConfig) # Inicia en estado de configuración
 
     def createTimer(self,event,duration):
-        t = Timer(self, event, duration)
-        self.timers.append(t)
-        return t
+        t = Timer(self, event, duration) # Crea nuevo temporizador
+        self.timers.append(t)            # Lo guarda en la lista
+        return t                         # Devuelve el temporizador
 
     def post_event(self, ev):
-        self.event_queue.append(ev)
+        self.event_queue.append(ev)      # Agrega evento a la cola
 
     def update(self):
         for t in self.timers:
-            t.update()
+            t.update()                   # Actualiza todos los temporizadores
 
         while len(self.event_queue) > 0:
-            ev = self.event_queue.pop(0)
+            ev = self.event_queue.pop(0) # Extrae el primer evento de la cola
             if self.estado_actual:
-                self.estado_actual(ev)
+                self.estado_actual(ev)   # Envía el evento al estado actual
 
     def transicion_a(self, nuevo_estado):
         if self.estado_actual:
-            self.estado_actual("EXIT")
-        self.estado_actual = nuevo_estado
-        self.estado_actual("ENTRY")
+            self.estado_actual("EXIT")   # Ejecuta salida del estado actual
+        self.estado_actual = nuevo_estado # Cambia al nuevo estado
+        self.estado_actual("ENTRY")      # Ejecuta entrada del nuevo estado
 
     # ===== ESTADOS =====
 
     def estado_waitConfig(self, ev):
         if ev == "ENTRY":
-            self.count = 20
-            display.show(FILL[self.count])
+            self.count = 20              # Reinicia contador
+            display.show(FILL[self.count]) # Muestra imagen inicial
 
         if ev == "A" and self.count < 25:
-            self.count += 1
-            display.show(FILL[self.count])
+            self.count += 1              # Aumenta contador
+            display.show(FILL[self.count]) # Actualiza pantalla
 
         if ev == "B" and self.count > 15:
-            self.count -= 1
+            self.count -= 1              # Disminuye contador
             display.show(FILL[self.count])
 
         if ev == "S":
-            self.transicion_a(self.estado_waitRunning)
+            self.transicion_a(self.estado_waitRunning) # Pasa a estado de conteo
 
     def estado_waitRunning(self, ev):
         if ev == "ENTRY":
-            self.myTimer.start(1000)
+            self.myTimer.start(1000)     # Inicia temporizador
             
         if ev == "B":
-            self.myTimer.stop()
-            self.transicion_a(self.estado_waitExplosion)
+            self.myTimer.stop()          # Detiene temporizador
+            self.transicion_a(self.estado_waitExplosion) # Explota manualmente
             
         if ev == "A":
-            self.myTimer.stop()
-            self.transicion_a(self.estado_waitConfig)
+            self.myTimer.stop()          # Cancela conteo
+            self.transicion_a(self.estado_waitConfig) # Regresa a configuración
 
         if ev == "Timeout":
-            self.count -= 1
+            self.count -= 1              # Reduce contador cada segundo
             display.show(FILL[self.count])
 
             if self.count == 0:
-                self.transicion_a(self.estado_waitExplosion)
+                self.transicion_a(self.estado_waitExplosion) # Explota al llegar a 0
             else:
-                self.myTimer.start(1000)
+                self.myTimer.start(1000) # Reinicia temporizador
 
     def estado_waitExplosion(self, ev):
         if ev == "ENTRY":
-            display.show(Image.SKULL)
-            pin0.write_digital(1)  # speaker ON
+            display.show(Image.SKULL)    # Muestra calavera
+            pin0.write_digital(1)        # Activa speaker
 
         if ev == "A":
-            pin0.write_digital(0)  # speaker OFF
-            self.transicion_a(self.estado_waitConfig)
+            pin0.write_digital(0)        # Apaga speaker
+            self.transicion_a(self.estado_waitConfig) # Reinicia sistema
 
 
 # ===== LOOP PRINCIPAL =====
-task = Task()
+task = Task()                           # Crea objeto principal
 
 while True:
 
     if uart.any():
-        data = uart.read(1)
+        data = uart.read(1)              # Lee un byte desde p5.js
         if data:
-           letra = data.decode()
+           letra = data.decode()         # Convierte byte a texto
            if letra in ["A", "B", "S"]:
-               task.post_event(letra)
+               task.post_event(letra)    # Envía evento a la máquina
     
     if button_a.was_pressed():
-        task.post_event("A")
+        task.post_event("A")             # Evento botón físico A
     if button_b.was_pressed():
-        task.post_event("B")
+        task.post_event("B")             # Evento botón físico B
     if accelerometer.was_gesture("shake"):
-        task.post_event("S")
+        task.post_event("S")             # Evento shake
 
-    task.update()
-    utime.sleep_ms(20)
+    task.update()                        # Actualiza máquina de estados
+    utime.sleep_ms(20)                   # Pequeña pausa para estabilidad
 ```
 **Código final p5.js**
 ```javascript
-let port;
-let connectBtn;
+let port;                 // Variable que guardará el objeto de comunicación serial
+let connectBtn;           // Variable para el botón que conecta con el micro:bit
 
 function setup() {
-  createCanvas(400,400);
+  createCanvas(400,400);  // Crea un lienzo de 400x400
 
-  port = createSerial();
+  port = createSerial();  // Crea el objeto para comunicación serial
 
-  connectBtn = createButton("Connect");
-  connectBtn.mousePressed(connectBtnClick);
+  connectBtn = createButton("Connect");   
+  connectBtn.mousePressed(connectBtnClick); // Ejecuta función al hacer clic
 }
 
 function draw() {
-  if (port.availableBytes() > 0) {
-    let dataRx = port.read(1);
-    console.log(dataRx);
+  // draw() se ejecuta en loop continuo
+
+  if (port.availableBytes() > 0) {   
+    let dataRx = port.read(1);       
+    console.log(dataRx);             // Imprime lo recibido
   }
 }
 
 function keyPressed() {
-  
-  if (!port.opened()) return;
+  // Se ejecuta cuando presionas una tecla
 
-  if (key === 'A') port.write(key);
-  if (key === 'B') port.write(key);
-  if (key === 'S') port.write(key);
-  
+  if (!port.opened()) return;  // Si no está abierto el puerto, no hace nada
+
+  if (key === 'A') port.write(key);  // Envía A
+  if (key === 'B') port.write(key);  // Envía B
+  if (key === 'S') port.write(key);  // Envía S
 }
 
 function connectBtnClick() {
-  if (!port.opened()) {
-    port.open("MicroPython", 115200);
+  // Maneja conexión serial
+
+  if (!port.opened()) {                 
+    port.open("MicroPython", 115200);   
   } else {
-    port.close();
+    port.close();  
   }
 }
 ```
@@ -814,4 +818,5 @@ El patrón de eventos hace que el sistema sea escalable.
 También comprendí que el problema no era de estados, sino de flujo de eventos.
 
 Lo que me ayudó a conectar otra interfaz sin molestar la maquina de estados
+
 
